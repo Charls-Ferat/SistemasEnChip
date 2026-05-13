@@ -2,10 +2,7 @@
 #include <avr/interrupt.h>   //Macros ISR(), sei(), cli()
 
 // Constantes guapas
-#define F_CPU       16000000UL  //Frecuencia del reloj
 #define PPR         20          //Pulsos Por Revolución del encoder
-
-// Prescaler thingy
 #define OCR1A_1S    15624       // Valor de comparación para periodo de 1 s
 
 // variables
@@ -18,7 +15,7 @@ static void TIMER1_Init(void);
 
 
 static void INT0_Init(void) {
-    DDRD  &= ~(1 << DDD2);      // PD2 como entrada
+    DDRD  &= ~(1 << DDD2);      // PD2 como entrada - hardware interrupts
     PORTD |=  (1 << PORTD2);    // Activar pull-up interno en PD2
     EICRA |=  (1 << ISC01) | (1 << ISC00);  // Flanco de subida: ISC01=1, ISC00=1
     EIMSK |=  (1 << INT0);                  // Habilitar INT0 en la máscara de interrupciones
@@ -27,23 +24,24 @@ static void INT0_Init(void) {
 // Timer a 1 seg
 static void TIMER1_Init(void) {
     TCCR1A = 0x00;
-    TCCR1B = (1 << WGM12) | (1 << CS12) | (1 << CS10);
-    OCR1A = OCR1A_1S;
+    TCCR1B = (1 << WGM12) | (1 << CS12) | (1 << CS10);  // CTC, Preescaler a 1024
+    OCR1A = OCR1A_1S;       // Valor de comparacion
     TIMSK1 = (1 << OCIE1A); // Habilitar interrupción por comparación A del Timer1
 }
 
 // ISR
+// Subrutina de conteo - Interrumpe el encoder
 ISR(INT0_vect) {
     pulse_count++;
 }
 
-
+// Subrutina del timer - Procesa cada 1 seg
 ISR(TIMER1_COMPA_vect) {
     uint32_t pulses;
 
     // Lectura atómica MUAJAJ
     cli();
-    pulses      = pulse_count;
+    pulses = pulse_count;
     pulse_count = 0;
     sei();
 
