@@ -40,6 +40,7 @@ static void LED_Init(void);
 void UART_sendChar(char c);
 void UART_sendString(const char *str);
 
+
 /*
  * Funciones de configuracion de registros
  * Sustituyen el void setup() {}
