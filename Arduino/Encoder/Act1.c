@@ -2,8 +2,8 @@
 #include <avr/interrupt.h>   //Macros ISR(), sei(), cli()
 
 // Constantes
-#define PPR         20          // Pulsos Por Revolución del encoder
-#define OCR1A_1S    15624       // Valor de comparación para periodo de 1 s
+#define PPR         20          // Pulsos Por Revolucion del encoder
+#define OCR1A_1S    15624       // Valor de comparacion para periodo de 1 s
 // Variables
 volatile uint32_t pulse_count = 0;   // Pulsos acumulados
 volatile uint32_t rpm         = 0;   // RPM calculadas (actualizadas cada 1 s)

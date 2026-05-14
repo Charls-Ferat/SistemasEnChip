@@ -2,22 +2,20 @@
 #include <avr/interrupt.h>   //Macros ISR(), sei(), cli()
 #include <stdlib.h>
 
-// Constantes guapas
+// Constantes - sustituidas al compilar
 // UART
-#define F_CPU 16000000UL
-#define BAUD 9600
-#define UBRR_VALUE ((F_CPU / 16 / BAUD) - 1)
+#define F_CPU 16000000UL                        // Velocidad del reloj
+#define BAUD 9600                               // Baudios
+#define UBRR_VALUE ((F_CPU / 16 / BAUD) - 1)    // Usart Baud Rate - Baud prescaler para el UART
 // Encoder
-#define PPR         20          //Pulsos Por Revolución del encoder
-#define OCR1A_1S    15624       // Valor de comparación para periodo de 1 s
+#define PPR         20          // Pulsos Por Revolucon del encoder
+#define OCR1A_1S    15624       // Valor de comparacion para periodo de 1s
 
 // variables
 volatile uint32_t pulse_count = 0;   // Pulsos acumulados
 volatile uint32_t rpm         = 0;   // RPM calculadas (actualizadas cada 1 s)
-volatile uint32_t segs        = 0;
-volatile uint8_t print_flag   = 0;
 
-// Funciones
+// Declaracion de Funciones
 static void INT0_Init(void);
 static void TIMER1_Init(void);
 static void UART_init(void);
