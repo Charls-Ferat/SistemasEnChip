@@ -1,18 +1,28 @@
 #include <avr/io.h>          //Definiciones de registros del AVR
 #include <avr/interrupt.h>   //Macros ISR(), sei(), cli()
+#include <stdlib.h>
 
-// Constantes
-#define PPR         20          // Pulsos Por Revolución del encoder
+// Constantes guapas
+// UART
+#define F_CPU 16000000UL
+#define BAUD 9600
+#define UBRR_VALUE ((F_CPU / 16 / BAUD) - 1)
+// Encoder
+#define PPR         20          //Pulsos Por Revolución del encoder
 #define OCR1A_1S    15624       // Valor de comparación para periodo de 1 s
-// Variables
+
+// variables
 volatile uint32_t pulse_count = 0;   // Pulsos acumulados
 volatile uint32_t rpm         = 0;   // RPM calculadas (actualizadas cada 1 s)
 
-// Declaracion de Funciones
+// Funciones
 static void INT0_Init(void);
 static void TIMER1_Init(void);
+static void UART_init(void);
+void UART_sendChar(char c);
+void UART_sendString(const char *str);
 
-
+// Configura el Puerto 2 para el encoder
 static void INT0_Init(void) {
     DDRD  &= ~(1 << DDD2);      // PD2 como entrada - hardware interrupts
     PORTD |=  (1 << PORTD2);    // Activar pull-up interno en PD2
@@ -28,37 +38,69 @@ static void TIMER1_Init(void) {
     TIMSK1 = (1 << OCIE1A); // Habilitar interrupción por comparación A del Timer1
 }
 
+//Configura el UART
+static void UART_init(void) {
+    // Baud rate
+    UBRR0H = (UBRR_VALUE >> 8);
+    UBRR0L = UBRR_VALUE;
+
+    // Habilitar transmisión
+    UCSR0B = (1 << TXEN0);
+
+    // 8 bits, 1 stop bit
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
+}
+
+
+// Funcion de UART para enviar
+// Chars
+void UART_sendChar(char c) {
+    // Esperar buffer vacio
+    while (!(UCSR0A & (1 << UDRE0)));
+    // Enviar caracter
+    UDR0 = c;
+}
+// Strings
+void UART_sendString(const char *str) {
+    while (*str) {
+        UART_sendChar(*str++);
+    }
+}
+
 // ISR
-// Subrutina de conteo - Interrumpcion por el encoder
+// Subrutina de conteo - Interrumpe el encoder
 ISR(INT0_vect) {
     pulse_count++;
 }
 
 // Subrutina del timer - Procesa cada 1 seg
 ISR(TIMER1_COMPA_vect) {
+
     uint32_t pulses;
 
-    // Lectura atómica
+    // Lectura atómica MUAJAJ
     cli();
     pulses = pulse_count;
     pulse_count = 0;
     sei();
 
-    // Formula de RPM
+    // Fórmula de RPM
     rpm = (pulses * 60UL) / PPR;
+
 }
 
 
 int main(void) {     // Poderosisimo main
-    INT0_Init();     // Configura la interrupcion
+    INT0_Init();     // Interrupción externa del encoder
     TIMER1_Init();   // Configurar Timer1
+    UART_init();     // Configura el UART
 
     sei();          // Enablea el interrupt
 
     // el void loop jaja
     while (1) {
         /*
-         * Aqui se podrian hacer cositas supongo
+         * Vacio
          */
     }
 
