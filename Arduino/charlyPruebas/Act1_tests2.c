@@ -1,26 +1,13 @@
-/*
- * Proyecto Integrador Modulo 2 - Parte A
- * Equipo: Carlos A. Ferat, Carlos Leon, Vian Gamiño
- * En esencia el codigo se interrumpe cada que hace falta,
- * con la peculiaridad que no aumenta el conteo hasta pasados
- * ciertos milisegundos para "limpiar" la señal
- * Ya que el motor jamas pasara de las 1000 RPM, fue lo mejor
- * posible para limpiar la señal del sensor
- */
-
 #include <avr/io.h>          //Definiciones de registros del AVR
 #include <avr/interrupt.h>   //Macros ISR(), sei(), cli()
+#include <stdlib.h>
 
 // Constantes - sustituidas al compilar
-// UART
-#define F_CPU 16000000UL                        // Velocidad del reloj
-#define BAUD 9600                               // Baudios
-#define UBRR_VALUE ((F_CPU / 16 / BAUD) - 1)    // Usart Baud Rate - Baud prescaler para el UART
 // Encoder
 #define PPR         4       // Pulsos Por Revolución del encoder
 #define OCR1A_1S    15624   // Valor de comparación para periodo de 1 s
 #define OCR0A_1S    249     // Valor de comparación para periodo de 1 ms
-#define DEBOUNCE_MS    15    // Tiempo minimo entre pulsos validos
+#define DEBOUNCE_MS    3    // Tiempo minimo entre pulsos validos
 
 // variables
 volatile uint32_t pulse_count = 0;      // Pulsos acumulados
@@ -28,23 +15,19 @@ volatile uint32_t rpm         = 0;      // RPM calculadas (actualizadas cada 1 s
 volatile uint32_t millis_counter = 0;   // Contador de tiempo global
 volatile uint32_t last_pulse_time = 0;  // Ultimo pulso con referencia al global
 
-// Declaracion de Funciones
+// Funciones
 static void INT0_Init(void);
 static void TIMER0_Init(void);
 static void TIMER1_Init(void);
 
-/*
- * Funciones de configuracion de registros
- * Sustituyen el void setup() {}
- */
-
-// Configuracion del Puerto 2 para el encoder
+// Configura el Puerto 2 para el encoder
 static void INT0_Init(void) {
     DDRD  &= ~(1 << DDD2);      // PD2 como entrada - hardware interrupts
     PORTD |=  (1 << PORTD2);    // Activar pull-up interno en PD2
     EICRA |=  (1 << ISC01) | (1 << ISC00);  // Flanco de subida: ISC01=1, ISC00=1
-    EIMSK |=  (1 << INT0);                  // Habilitar INT0 en la mascara de interrupciones
+    EIMSK |=  (1 << INT0);                  // Habilitar INT0 en la máscara de interrupciones
 }
+
 // Timer a 1 seg
 static void TIMER1_Init(void) {
     TCCR1A = 0x00;
@@ -52,7 +35,8 @@ static void TIMER1_Init(void) {
     OCR1A = OCR1A_1S;       // Valor de comparacion
     TIMSK1 = (1 << OCIE1A); // Habilitar interrupción por comparación A del Timer1
 }
-// Timer con el global counter
+
+// Otro timer
 static void TIMER0_Init(void) {
     TCCR0A = (1 << WGM01);
     TCCR0B = (1 << CS01) | (1 << CS00); // CTC, Preescaler a 64
@@ -60,12 +44,7 @@ static void TIMER0_Init(void) {
     TIMSK0 |= (1 << OCIE0A);    // Habilitar interrupcion por comparacion
 }
 
-/*
- * ISRs
- * Definicion de las multiples interrupciones del procesador
- * Causadas por: Pin fisico (encoder), Timer(cada 1s), UART(recibe 'V')
- */
-
+// ISR
 // Subrutina de conteo - Interrumpe el encoder
 ISR(INT0_vect) {
     uint32_t now;
@@ -78,10 +57,12 @@ ISR(INT0_vect) {
         last_pulse_time = now;
     }
 }
+
 // Subrutina del "timer global"
 ISR(TIMER0_COMPA_vect) {
     millis_counter++;
 }
+
 // Subrutina del timer - Procesa cada 1 seg
 ISR(TIMER1_COMPA_vect) {
     uint32_t pulses;
@@ -93,26 +74,18 @@ ISR(TIMER1_COMPA_vect) {
 }
 
 
-/*
- * Funcion main()
- * Declara la incilizacion de registros
- * Y el loop principal del programa
- * Usa un while(true)
- */
-
+// Poderosisimo main
 int main(void) {
-    // Inicializacion de perifericos
-    INT0_Init();
+    INT0_Init();     // Inicializacion de perifericos
     TIMER0_Init();
     TIMER1_Init();
 
-    // Habilita el interrupt
-    sei();
+    sei();          // Habilita el interrupt
 
-    // El "void loop"
+    // el void loop jaja
     while (1) {
         /*
-         * vacio
+         * VACIO
          */
     }
 

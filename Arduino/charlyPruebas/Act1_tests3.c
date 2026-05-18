@@ -1,15 +1,6 @@
-/*
- * Proyecto Integrador Modulo 2 - Parte A
- * Equipo: Carlos A. Ferat, Carlos Leon, Vian Gamiño
- * En esencia el codigo se interrumpe cada que hace falta,
- * con la peculiaridad que no aumenta el conteo hasta pasados
- * ciertos milisegundos para "limpiar" la señal
- * Ya que el motor jamas pasara de las 1000 RPM, fue lo mejor
- * posible para limpiar la señal del sensor
- */
-
 #include <avr/io.h>          //Definiciones de registros del AVR
 #include <avr/interrupt.h>   //Macros ISR(), sei(), cli()
+#include <stdlib.h>
 
 // Constantes - sustituidas al compilar
 // UART
@@ -20,7 +11,7 @@
 #define PPR         4       // Pulsos Por Revolución del encoder
 #define OCR1A_1S    15624   // Valor de comparación para periodo de 1 s
 #define OCR0A_1S    249     // Valor de comparación para periodo de 1 ms
-#define DEBOUNCE_MS    15    // Tiempo minimo entre pulsos validos
+#define DEBOUNCE_MS    3    // Tiempo minimo entre pulsos validos
 
 // variables
 volatile uint32_t pulse_count = 0;      // Pulsos acumulados
@@ -32,6 +23,9 @@ volatile uint32_t last_pulse_time = 0;  // Ultimo pulso con referencia al global
 static void INT0_Init(void);
 static void TIMER0_Init(void);
 static void TIMER1_Init(void);
+static void UART_init(void);
+void UART_sendChar(char c);
+void UART_sendString(const char *str);
 
 /*
  * Funciones de configuracion de registros
@@ -59,6 +53,34 @@ static void TIMER0_Init(void) {
     OCR0A = OCR0A_1S;                // Compara a 1 mili segundo
     TIMSK0 |= (1 << OCIE0A);    // Habilitar interrupcion por comparacion
 }
+//Configuracion del UART
+static void UART_init(void) {
+    // Baud rate
+    UBRR0H = (UBRR_VALUE >> 8);
+    UBRR0L = UBRR_VALUE;
+
+    // Habilitar transmision y recepcion
+    UCSR0B = (1 << TXEN0) | (1 << RXEN0) | (1 << RXCIE0);
+
+    // 8 bits, 1 stop bit
+    UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
+}
+
+// Funcion de UART para enviar
+// Chars
+void UART_sendChar(char c) {
+    // Esperar buffer vacio
+    while (!(UCSR0A & (1 << UDRE0)));
+    // Enviar caracter
+    UDR0 = c;
+}
+// Strings
+void UART_sendString(const char *str) {
+    while (*str) {
+        UART_sendChar(*str++);
+    }
+}
+
 
 /*
  * ISRs
@@ -111,9 +133,12 @@ int main(void) {
 
     // El "void loop"
     while (1) {
-        /*
-         * vacio
-         */
+        char buffer[16];
+        itoa(rpm, buffer, 10);
+
+        UART_sendString("Se tienen: ");
+        UART_sendString(buffer);
+        UART_sendString(" RPM\r\n");
     }
 
     return 0;   // Sino no compila

@@ -1,4 +1,15 @@
 /*
+ * Proyecto Integrador Modulo 2 - Parte B
+ * Equipo: Carlos A. Ferat, Carlos Leon, Vian Gamiño
+ * En esencia el codigo se interrumpe cada que hace falta,
+ * con la peculiaridad que no aumenta el conteo hasta pasados
+ * ciertos milisegundos para "limpiar" la señal
+ * Ya que el motor jamas pasara de las 1000 RPM, fue lo mejor
+ * posible para limpiar la señal del sensor, aunque hubo
+ * que implementar un segundo timer
+ */
+
+/*
  * Calculo para el registro configurador del USART
  *
  * El UBRR0
@@ -25,15 +36,20 @@
 #define BAUD 9600                               // Baudios
 #define UBRR_VALUE ((F_CPU / 16 / BAUD) - 1)    // Usart Baud Rate - Baud prescaler para el UART
 // Encoder
-#define PPR         20          // Pulsos Por Revolucon del encoder
-#define OCR1A_1S    15624       // Valor de comparacion para periodo de 1s
+#define PPR         4       // Pulsos Por Revolución del encoder
+#define OCR1A_1S    15624   // Valor de comparación para periodo de 1 s
+#define OCR0A_1S    249     // Valor de comparación para periodo de 1 ms
+#define DEBOUNCE_MS    3    // Tiempo minimo entre pulsos validos
 
 // variables
-volatile uint32_t pulse_count = 0;   // Pulsos acumulados
-volatile uint32_t rpm         = 0;   // RPM calculadas (actualizadas cada 1 s)
+volatile uint32_t pulse_count = 0;      // Pulsos acumulados
+volatile uint32_t rpm         = 0;      // RPM calculadas (actualizadas cada 1 s)
+volatile uint32_t millis_counter = 0;   // Contador de tiempo global
+volatile uint32_t last_pulse_time = 0;  // Ultimo pulso con referencia al global
 
-// Declaracion de funciones
+// Declaracion de Funciones
 static void INT0_Init(void);
+static void TIMER0_Init(void);
 static void TIMER1_Init(void);
 static void UART_init(void);
 static void LED_Init(void);
@@ -59,6 +75,13 @@ static void TIMER1_Init(void) {
     TCCR1B = (1 << WGM12) | (1 << CS12) | (1 << CS10);  // CTC, Preescaler a 1024
     OCR1A = OCR1A_1S;       // Valor de comparacion
     TIMSK1 = (1 << OCIE1A); // Habilitar interrupción por comparación A del Timer1
+}
+// Timer con el global counter
+static void TIMER0_Init(void) {
+    TCCR0A = (1 << WGM01);
+    TCCR0B = (1 << CS01) | (1 << CS00); // CTC, Preescaler a 64
+    OCR0A = OCR0A_1S;                // Compara a 1 mili segundo
+    TIMSK0 |= (1 << OCIE0A);    // Habilitar interrupcion por comparacion
 }
 //Configuracion del UART
 static void UART_init(void) {
@@ -102,28 +125,36 @@ void UART_sendString(const char *str) {
  * Causadas por: Pin fisico (encoder), Timer(cada 1s), UART(recibe 'V')
  */
 
-// Subrutina de conteo - Interrupcion por el encoder
+// Subrutina de conteo - Interrumpe el encoder
 ISR(INT0_vect) {
-    pulse_count++;
+    uint32_t now;
+    now = millis_counter;   // Pulso actual con referencia al timer global
+    // Filtrado de pulsos validos - Elimina ruido
+    if ((now - last_pulse_time) >= DEBOUNCE_MS) {   // No bloqueante (creemos)
+        // Aumenta conteo de pulsos
+        pulse_count++;
+        // Ultimo pulso valido con referencia al timer global
+        last_pulse_time = now;
+    }
+}
+// Subrutina del "timer global"
+ISR(TIMER0_COMPA_vect) {
+    millis_counter++;
 }
 // Subrutina del timer - Procesa cada 1 seg
 ISR(TIMER1_COMPA_vect) {
     uint32_t pulses;
+    pulses = pulse_count;   // Variable local con el conteo
+    pulse_count = 0;        // Resetea la global con el conteo
 
-    // Lectura atómica MUAJAJ
-    cli();
-    pulses = pulse_count;
-    pulse_count = 0;
-    sei();
-
-    // Fórmula de RPM
+    // Calculo de las revs por minuto
     rpm = (pulses * 60UL) / PPR;
 }
 // Subrutina del UART - Interrupcion por UART
 ISR(USART_RX_vect) {
     char recieved = UDR0;   // Mensaje recibido
     // Comprueba recepcion de una 'v' o 'V'
-    if (received == 'V' || received == 'v') {
+    if (recieved == 'V' || recieved == 'v') {
         char buffer[32];
 
         ultoa(rpm, buffer, 10);             // Convierte el calculo a ASCII
@@ -143,22 +174,31 @@ ISR(USART_RX_vect) {
  * Para indicar el uso de interrupciones tiene
  *  un LED parpadeante
  */
+
 int main(void) {    // Poderosisimo main
-    INT0_Init();    // Interrupción externa del encoder
-    TIMER1_Init();  // Configurar Timer1
-    UART_init();    // Configura el UART
-    LED_Init(void); // Configura el LED
+    // Inicializacion de perifericos
+    INT0_Init();
+    TIMER0_Init();
+    TIMER1_Init();
+    UART_init();
+    LED_Init();
 
-    sei();          // Enablea el interrupt
+    // Habilita el interrupt
+    sei();
 
-    // el void loop jaja
+    // El "void loop"
     while (1) {
         // Parpadea el LED
         PORTB ^= (1 << PORTB5);
-        // Espera un par de instrucciones
-        // Por lo menos un contador de 200k instrucciones(suponemos)
-        // Un delay muy rudimentario
-        for (volatile uint32_t i = 0; i < 200'000; i++);
+        /*
+         * Espera un par de instrucciones
+         * Por lo menos un contador de 200k instrucciones(suponemos)
+         * Un delay muy rudimentario - no bloqueante
+         * Muestra que el procesador no hace "polling"
+         */
+        for (volatile uint32_t i = 0; i < 200000; i++);
+
+
     }
 
     return 0;   // Sino no compila
