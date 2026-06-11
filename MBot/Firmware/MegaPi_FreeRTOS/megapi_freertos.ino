@@ -1,8 +1,7 @@
 // TopMAN
 // Rev 8
-// FreeRTOS implementation with buffered UART and robust timeout handling.
+// FreeRTOS implementation with UART && timeout handling.
 
-#include <Arduino.h>
 #include <Arduino_FreeRTOS.h>
 #include <task.h>
 #include <event_groups.h>
@@ -19,25 +18,23 @@
 #include "src/MeCollisionSensor.h"
 #include <MeMegaPi.h>
 
-// ---- Constants ----
+// ---- Constantes ----
 // UART protocol: [SYNC][SPEED][STEER][FLAGS][CRC]
 #define BAUD_RATE               115200
 #define SYNC_BYTE               0xAA
 #define PACKET_SIZE             5
 #define COMM_TIMEOUT_MS         500UL
-
 // Motor control
 #define MAX_TURN_CORRECTION     120
 #define TURN_SPEED              120
-#define TURN_180_TIME           3100
+#define TURN_180_TIME           2900
 #define STOP_TIME               300
 #define MIN_MOTOR_SPEED         60
-
-// Event group bits
+// Event indicators
 #define EVENT_COLLISION         (1 << 0)
 #define EVENT_COMMS_OK          (1 << 1)
 
-// ---- Data types ----
+// ---- Struct ----
 typedef struct {
   uint8_t speed;
   int8_t steer;
@@ -66,7 +63,7 @@ EventGroupHandle_t systemEvents;
 volatile uint32_t lastPacketMs = 0;
 volatile uint32_t msCounter = 0;
 
-// ---- Time helpers ----
+// ---- Timer helpers ----
 void markPacketReceived() {
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
     lastPacketMs = msCounter;
@@ -86,7 +83,7 @@ uint32_t packetAgeMs() {
   return now - last;
 }
 
-// ---- Numeric helpers ----
+// ---- Helpers ----
 int16_t mapValue(
     int16_t x,
     int16_t inMin,
@@ -189,28 +186,41 @@ void lineFollowDrive(int16_t speed, int8_t steer) {
   motorBackRightRun(rightSpeed);
 }
 
-// ---- Buffered UART ----
-// HardwareSerial uses the USART RX interrupt and its circular receive buffer.
-void UART_init() {
-  Serial.begin(BAUD_RATE);
+
+
+// ----  UART ----
+// Uart setup
+void UART_init(void) {
+  UCSR0A = (1 << U2X0);
+
+  UBRR0H = (UBRR_VALUE >> 8);
+  UBRR0L = UBRR_VALUE;
+
+  UCSR0B = (1 << TXEN0) | (1 << RXEN0);
+  UCSR0C = (1 << UCSZ01) | (1 << UCSZ00);
 }
 
-void UART_sendChar(char value) {
-  Serial.write((uint8_t)value);
+// Send char
+void UART_sendChar(char c) {
+    while (!(UCSR0A & (1 << UDRE0)));
+    UDR0 = c;
 }
 
-void UART_sendString(const char *text) {
-  while (*text != '\0') {
-    UART_sendChar(*text++);
-  }
+// Send a full string
+void UART_sendString(const char *str) {
+    while (*str) {
+        UART_sendChar(*str++);
+    }
 }
 
-bool UART_available() {
-  return Serial.available() > 0;
+// UART availability
+uint8_t UART_available(void) {
+    return (UCSR0A & (1 << RXC0));
 }
 
-uint8_t UART_readByte() {
-  return (uint8_t)Serial.read();
+// Non block readbyte
+uint8_t UART_readByte(void) {
+    return UDR0;
 }
 
 // ---- Packet decoder ----
@@ -224,7 +234,7 @@ uint8_t computeCRC(const uint8_t *data, uint8_t length) {
   return crc;
 }
 
-// Keep any possible next frame start already present in a bad frame.
+// Resync helper
 uint8_t resyncPacketBuffer(uint8_t *buffer) {
   for (uint8_t position = 1; position < PACKET_SIZE; position++) {
     if (buffer[position] == SYNC_BYTE) {
@@ -244,6 +254,7 @@ bool receivePacket(Packet *packet) {
   while (UART_available()) {
     uint8_t value = UART_readByte();
 
+    // Resync
     if (index == 0) {
       if (value == SYNC_BYTE) {
         buffer[0] = value;
@@ -252,7 +263,6 @@ bool receivePacket(Packet *packet) {
       continue;
     }
 
-    // Once a frame has started, 0xAA is valid in every payload field and CRC.
     buffer[index++] = value;
 
     if (index < PACKET_SIZE) {
@@ -276,7 +286,7 @@ bool receivePacket(Packet *packet) {
   return false;
 }
 
-// ---- Independent 1 ms timer ----
+// ----  1 ms timer ----
 void setupTimer3_1ms() {
   cli();
 
@@ -321,7 +331,6 @@ void vUARTTask(void *pvParameters) {
       }
     }
 
-    // The configured AVR FreeRTOS tick is approximately 16 ms.
     vTaskDelayUntil(&lastWake, 1);
   }
 }
@@ -358,7 +367,6 @@ void vSafetyTask(void *pvParameters) {
     if (packetAgeMs() > COMM_TIMEOUT_MS) {
       xEventGroupClearBits(systemEvents, EVENT_COMMS_OK);
 
-      // Do not block the safety task waiting for another motor operation.
       if (xSemaphoreTake(motorMutex, 0) == pdTRUE) {
         stopMotors();
         xSemaphoreGive(motorMutex);
@@ -385,7 +393,7 @@ void vMotionTask(void *pvParameters) {
       }
 
       if (xSemaphoreTake(motorMutex, portMAX_DELAY) == pdTRUE) {
-        // Recheck the safety state after waiting for the motor mutex.
+        // Recheck the safety state after motor mutex thing.
         bits = xEventGroupGetBits(systemEvents);
         if ((bits & EVENT_COMMS_OK) && !(bits & EVENT_COLLISION)) {
           lineFollowDrive(packet.speed, packet.steer);
@@ -480,4 +488,7 @@ void setup() {
 }
 
 void loop() {
+  /*
+  * Vacio
+  */
 }
